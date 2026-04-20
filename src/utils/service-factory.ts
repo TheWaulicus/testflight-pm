@@ -9,6 +9,7 @@ import type {
 } from "../../types/github.js";
 import type { LinearIssue } from "../../types/linear.js";
 import type { ProcessedFeedbackData } from "../../types/testflight.js";
+import { CONFIG_HELPERS } from "../config/index.js";
 
 // Type imports for proper client typing
 interface GitHubClientInterface {
@@ -316,24 +317,30 @@ export class IssueServiceFactory {
 	 */
 	private initializeServices(): void {
 		try {
-			// Dynamic imports to avoid circular dependencies
-			import("../api/github-client.js")
-				.then(({ getGitHubClient }) => {
-					const githubService = new GitHubIssueService(getGitHubClient());
-					this.registry.register("github", githubService, true);
-				})
-				.catch((error) => {
-					console.warn("Failed to initialize GitHub service:", error);
-				});
+			// Only initialize GitHub if configured
+			if (CONFIG_HELPERS.hasGitHubIntegration()) {
+				// Dynamic imports to avoid circular dependencies
+				import("../api/github-client.js")
+					.then(({ getGitHubClient }) => {
+						const githubService = new GitHubIssueService(getGitHubClient());
+						this.registry.register("github", githubService, true);
+					})
+					.catch((error) => {
+						console.warn("Failed to initialize GitHub service:", error);
+					});
+			}
 
-			import("../api/linear-client.js")
-				.then(({ getLinearClient }) => {
-					const linearService = new LinearIssueService(getLinearClient());
-					this.registry.register("linear", linearService);
-				})
-				.catch((error) => {
-					console.warn("Failed to initialize Linear service:", error);
-				});
+			// Only initialize Linear if configured
+			if (CONFIG_HELPERS.hasLinearIntegration()) {
+				import("../api/linear-client.js")
+					.then(({ getLinearClient }) => {
+						const linearService = new LinearIssueService(getLinearClient());
+						this.registry.register("linear", linearService);
+					})
+					.catch((error) => {
+						console.warn("Failed to initialize Linear service:", error);
+					});
+			}
 		} catch (error) {
 			console.error("Failed to initialize services:", error);
 		}
