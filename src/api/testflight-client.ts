@@ -105,42 +105,24 @@ export class TestFlightClient {
 		appId: string,
 		since: Date,
 	): Promise<TestFlightScreenshotFeedback[]> {
+		console.log(`🔍 Fetching screenshot submissions for client-side filtering...`);
 		try {
-			// First try with API-level date filtering using createdDate
-			const isoDate = since.toISOString();
-			const apiFilteredResults = await this.getAppScreenshotSubmissions(appId, {
-				filter: {
-					createdDate: `>${isoDate}`,
-				},
-				limit: 100,
+			// Fetch broader dataset (last 7 days worth to be safe)
+			const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
+				limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT, // Get more results
 			});
 
-			console.log(`✅ API-level date filtering successful for screenshot submissions`);
-			return apiFilteredResults;
+			// Filter client-side based on actual createdDate or submittedAt fields
+			const filteredScreenshots = allRecentScreenshots.filter(screenshot => {
+				const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
+				return createdDate >= since;
+			});
+
+			console.log(`✅ Client-side filtering successful: ${filteredScreenshots.length}/${allRecentScreenshots.length} screenshot submissions match date filter`);
+			return filteredScreenshots;
 		} catch (error) {
-			// If API filtering fails, fall back to fetching more data and filtering client-side
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			console.warn(`⚠️ API-level date filtering failed for screenshot submissions: ${errorMessage}`);
-			console.log(`🔄 Falling back to client-side filtering...`);
-
-			try {
-				// Fetch broader dataset (last 7 days worth to be safe)
-				const allRecentScreenshots = await this.getAppScreenshotSubmissions(appId, {
-					limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT, // Get more results
-				});
-
-				// Filter client-side based on actual createdDate or submittedAt fields
-				const filteredScreenshots = allRecentScreenshots.filter(screenshot => {
-					const createdDate = new Date(screenshot.attributes.createdDate || screenshot.attributes.submittedAt || 0);
-					return createdDate >= since;
-				});
-
-				console.log(`✅ Client-side filtering successful: ${filteredScreenshots.length}/${allRecentScreenshots.length} screenshot submissions match date filter`);
-				return filteredScreenshots;
-			} catch (fallbackError) {
-				console.error(`❌ Both API and client-side filtering failed for screenshot submissions:`, fallbackError);
-				throw fallbackError;
-			}
+			console.error(`❌ Client-side filtering failed for screenshot submissions:`, error);
+			throw error;
 		}
 	}
 
@@ -481,42 +463,24 @@ export class TestFlightClient {
 		appId: string,
 		since: Date,
 	): Promise<TestFlightCrashReport[]> {
+		console.log(`🔍 Fetching crash submissions for client-side filtering...`);
 		try {
-			// First try with API-level date filtering using createdDate
-			const isoDate = since.toISOString();
-			const apiFilteredResults = await this.getAppCrashSubmissions(appId, {
-				filter: {
-					createdDate: `>${isoDate}`,
-				},
-				limit: 100,
+			// Fetch broader dataset (last 7 days worth to be safe)
+			const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
+				limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT, // Get more results
 			});
 
-			console.log(`✅ API-level date filtering successful for crash submissions`);
-			return apiFilteredResults;
+			// Filter client-side based on actual createdDate or submittedAt fields
+			const filteredCrashes = allRecentCrashes.filter(crash => {
+				const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
+				return createdDate >= since;
+			});
+
+			console.log(`✅ Client-side filtering successful: ${filteredCrashes.length}/${allRecentCrashes.length} crash submissions match date filter`);
+			return filteredCrashes;
 		} catch (error) {
-			// If API filtering fails, fall back to fetching more data and filtering client-side
-			const errorMessage = error instanceof Error ? error.message : String(error);
-			console.warn(`⚠️ API-level date filtering failed for crash submissions: ${errorMessage}`);
-			console.log(`🔄 Falling back to client-side filtering...`);
-
-			try {
-				// Fetch broader dataset (last 7 days worth to be safe)
-				const allRecentCrashes = await this.getAppCrashSubmissions(appId, {
-					limit: DEFAULT_TESTFLIGHT_CONFIG.MAX_LIMIT, // Get more results
-				});
-
-				// Filter client-side based on actual createdDate or submittedAt fields
-				const filteredCrashes = allRecentCrashes.filter(crash => {
-					const createdDate = new Date(crash.attributes.createdDate || crash.attributes.submittedAt || 0);
-					return createdDate >= since;
-				});
-
-				console.log(`✅ Client-side filtering successful: ${filteredCrashes.length}/${allRecentCrashes.length} crash submissions match date filter`);
-				return filteredCrashes;
-			} catch (fallbackError) {
-				console.error(`❌ Both API and client-side filtering failed for crash submissions:`, fallbackError);
-				throw fallbackError;
-			}
+			console.error(`❌ Client-side filtering failed for crash submissions:`, error);
+			throw error;
 		}
 	}
 
@@ -566,6 +530,12 @@ export class TestFlightClient {
 	 */
 	public async downloadDetailedCrashLog(crashLog: TestFlightCrashLog): Promise<string | null> {
 		try {
+			// Check if download URL exists
+			if (!crashLog.attributes.downloadUrl) {
+				console.warn(`No download URL available for crash log ${crashLog.id}`);
+				return null;
+			}
+
 			// Check if URL hasn't expired
 			const expiresAt = new Date(crashLog.attributes.expiresAt);
 			if (expiresAt <= new Date()) {
@@ -1067,8 +1037,6 @@ export class TestFlightClient {
 							"batteryPercentage", "appUptimeInMilliseconds", "connectionType",
 							"diskBytesAvailable", "diskBytesTotal", "architecture",
 							"pairedAppleWatch", "screenWidthInPoints", "screenHeightInPoints",
-							"applicationState", "memoryPressure", "batteryLevel", "batteryState",
-							"thermalState", "diskSpaceRemaining", "submissionMethod", "testerNotes",
 							"screenshots"
 						].join(",")
 					}
@@ -1076,18 +1044,7 @@ export class TestFlightClient {
 
 				if (processedScreenshot.screenshotData) {
 					// Add enhanced screenshot information
-					processedScreenshot.screenshotData.testerNotes = detailedScreenshot.attributes.testerNotes;
-					processedScreenshot.screenshotData.submissionMethod = detailedScreenshot.attributes.submissionMethod;
-
-					// Add system information if available
-					processedScreenshot.screenshotData.systemInfo = {
-						applicationState: detailedScreenshot.attributes.applicationState,
-						memoryPressure: detailedScreenshot.attributes.memoryPressure,
-						batteryLevel: detailedScreenshot.attributes.batteryLevel,
-						batteryState: detailedScreenshot.attributes.batteryState,
-						thermalState: detailedScreenshot.attributes.thermalState,
-						diskSpaceRemaining: detailedScreenshot.attributes.diskSpaceRemaining,
-					};
+					// testerNotes and submissionMethod are not available in screenshot metadata either based on error logs
 
 					// Process enhanced screenshot images if available
 					if (detailedScreenshot.attributes.screenshots) {
